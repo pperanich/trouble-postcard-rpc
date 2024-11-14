@@ -2,7 +2,6 @@
 #![no_main]
 use defmt::{info, warn};
 use embassy_executor::Spawner;
-use embassy_futures::join::join;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
 use microbit_bsp::ble::{MultiprotocolServiceLayer, SoftdeviceController};
@@ -21,9 +20,10 @@ use trouble_postcard_rpc::{
     ble_task,
     icd::{PingEndpoint, ENDPOINT_LIST, TOPICS_IN_LIST, TOPICS_OUT_LIST},
     impls::l2cap::{
-        dispatch_impl::{new_server, WireRxBuf, WireRxImpl, WireTxImpl},
+        dispatch_impl::{WireRxBuf, WireRxImpl, WireTxImpl},
         L2CapWireRx, L2CapWireSpawn, L2CapWireTx, L2CapWireTxInner,
     },
+    impls::PBUFS,
     mpsl_task, SdcResources,
 };
 
@@ -83,7 +83,6 @@ pub async fn run_l2cap_rpc(
 ) {
     spawner.must_spawn(mpsl_task(mpsl));
 
-    let pbufs = PBUFS.take();
     let address: Address = Address::random([0xff, 0x8f, 0x1a, 0x05, 0xe4, 0xff]);
     info!("Our address = {:?}", address);
 
@@ -116,8 +115,34 @@ pub async fn run_l2cap_rpc(
         info!("L2CAP channel accepted");
 
         let dispatcher = MicrobitL2CapApp::new(app_context, spawner.into());
-
-        let server = new_server(dispatcher, stack, ch1);
+        let vkk = dispatcher.min_key_len();
+        let pbufs = PBUFS.take();
+        let tx_impl_inner = L2CapWireTxInner {
+            stack,
+            log_seq: 0,
+            tx_buf: pbufs.tx_buf.as_mut_slice(),
+        };
+        let tx_impl_inner_wtx = {
+            static TX_IMPL_INNER: StaticCell<
+                Mutex<ThreadModeRawMutex, L2CapWireTxInner<SoftdeviceController<'static>>>,
+            > = StaticCell::new();
+            TX_IMPL_INNER.init(Mutex::new(tx_impl_inner))
+        };
+        let tx_impl = L2CapWireTx {
+            chan: ch1.clone(),
+            inner: tx_impl_inner_wtx,
+        };
+        let rx_impl = L2CapWireRx {
+            stack,
+            chan: ch1.clone(),
+        };
+        let server = Server::new(
+            &tx_impl,
+            rx_impl,
+            pbufs.rx_buf.as_mut_slice(),
+            dispatcher,
+            vkk,
+        );
 
         server.run().await;
 

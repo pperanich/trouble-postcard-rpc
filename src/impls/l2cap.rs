@@ -35,51 +35,52 @@ pub mod dispatch_impl {
     /// Type alias for the receive buffer
     pub type WireRxBuf = &'static mut [u8];
 
-    /// Create a new server using the [`Settings`] and [`Dispatch`] implementation
-    pub fn new_server<'a, D>(
-        dispatch: D,
-        stack: &'static Stack<'static, SoftdeviceController<'static>>,
-        chan: L2capChannel<'a>,
-    ) -> Server<
-        WireTxImpl<'a, ThreadModeRawMutex, SoftdeviceController<'static>>,
-        WireRxImpl<'a, SoftdeviceController<'static>>,
-        WireRxBuf,
-        D,
-    >
-    where
-        D: Dispatch<Tx = WireTxImpl<'a, ThreadModeRawMutex, SoftdeviceController<'static>>>,
-    {
-        let vkk = dispatch.min_key_len();
-        let pbufs = PBUFS.take();
-        let tx_impl_inner = super::L2CapWireTxInner {
-            stack,
-            log_seq: 0,
-            tx_buf: pbufs.tx_buf.as_mut_slice(),
-        };
-        let tx_impl_inner_wtx = {
-            static TX_IMPL_INNER: StaticCell<
-                Mutex<ThreadModeRawMutex, super::L2CapWireTxInner<SoftdeviceController<'static>>>,
-            > = StaticCell::new();
-            TX_IMPL_INNER.init(Mutex::new(tx_impl_inner))
-        };
-        let tx_impl = super::L2CapWireTx {
-            chan: chan.clone(),
-            inner: tx_impl_inner_wtx,
-        };
-        let rx_impl = super::L2CapWireRx {
-            stack,
-            chan: chan.clone(),
-        };
-        let server = Server::new(
-            &tx_impl,
-            rx_impl,
-            pbufs.rx_buf.as_mut_slice(),
-            dispatch,
-            vkk,
-        );
-
-        server
-    }
+    // FIXME: This is broken right now due to lifetime differences between
+    //   the channel and stack.
+    // pub fn new_server<'a, D>(
+    //     dispatch: D,
+    //     stack: &'static Stack<'static, SoftdeviceController<'static>>,
+    //     chan: L2capChannel<'a>,
+    // ) -> Server<
+    //     WireTxImpl<'a, ThreadModeRawMutex, SoftdeviceController<'static>>,
+    //     WireRxImpl<'a, SoftdeviceController<'static>>,
+    //     WireRxBuf,
+    //     D,
+    // >
+    // where
+    //     D: Dispatch<Tx = WireTxImpl<'a, ThreadModeRawMutex, SoftdeviceController<'static>>>,
+    // {
+    //     let vkk = dispatch.min_key_len();
+    //     let pbufs = PBUFS.take();
+    //     let tx_impl_inner = super::L2CapWireTxInner {
+    //         stack,
+    //         log_seq: 0,
+    //         tx_buf: pbufs.tx_buf.as_mut_slice(),
+    //     };
+    //     let tx_impl_inner_wtx = {
+    //         static TX_IMPL_INNER: StaticCell<
+    //             Mutex<ThreadModeRawMutex, super::L2CapWireTxInner<SoftdeviceController<'static>>>,
+    //         > = StaticCell::new();
+    //         TX_IMPL_INNER.init(Mutex::new(tx_impl_inner))
+    //     };
+    //     let tx_impl = super::L2CapWireTx {
+    //         chan: chan.clone(),
+    //         inner: tx_impl_inner_wtx,
+    //     };
+    //     let rx_impl = super::L2CapWireRx {
+    //         stack,
+    //         chan: chan.clone(),
+    //     };
+    //     let server = Server::new(
+    //         &tx_impl,
+    //         rx_impl,
+    //         pbufs.rx_buf.as_mut_slice(),
+    //         dispatch,
+    //         vkk,
+    //     );
+    //
+    //     server
+    // }
 }
 
 //////////////////////////////////////////////////////////////////////////////
